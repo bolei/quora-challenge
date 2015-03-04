@@ -23,6 +23,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map.Entry;
 import java.util.PriorityQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,6 +34,7 @@ public class TypeaheadSearch {
 	private QuoraIndexer indexer = new QuoraIndexer();
 
 	private static final boolean IS_BENCHMARK_ON = true;
+	private static BenchMark bm = new BenchMark(IS_BENCHMARK_ON);
 
 	private static final String WHITE_SPACE_REGEX = "\\s+";
 	private static final String ADD_BODY_REGEX = "(\\S+)\\s+(\\S+)\\s+(\\S+)\\s*(.*)";
@@ -130,8 +133,6 @@ public class TypeaheadSearch {
 	private String executeWquery(int numResult, HashMap<String, Float> boosts,
 			String query) {
 
-		BenchMark bm = new BenchMark(IS_BENCHMARK_ON);
-
 		if (query.isEmpty()) {
 			return "";
 		}
@@ -153,7 +154,7 @@ public class TypeaheadSearch {
 			}
 			cache.add(tmpSet);
 		}
-		bm.measure("collect cached sets", true);
+		bm.measure("coll_cache", true);
 
 		HashSet<Integer> resultSet = null;
 		Iterator<SizeComparableSet<Integer>> it = cache.iterator();
@@ -179,7 +180,7 @@ public class TypeaheadSearch {
 
 		Collection<ResultDataEntry> descSortedResultColl = boostAndSort(
 				resultSet, boosts);
-		bm.measure("boost and sort", true);
+		bm.measure("boost_sort", true);
 
 		StringBuilder sb = new StringBuilder();
 
@@ -190,7 +191,7 @@ public class TypeaheadSearch {
 			}
 			sb.append(descIt.next().getEntry().getId());
 		}
-		bm.measure("generate String", false);
+		bm.measure("gen_string", false);
 		return sb.toString();
 	}
 
@@ -290,8 +291,7 @@ public class TypeaheadSearch {
 	}
 
 	public static void main(String[] args) throws FileNotFoundException {
-
-		BenchMark bm = new BenchMark(IS_BENCHMARK_ON);
+		bm.start();
 		InputStream is = System.in;
 
 		if (args.length > 0) {
@@ -304,7 +304,7 @@ public class TypeaheadSearch {
 		for (String input : inputList) {
 			qs.executeInput(input, System.out);
 		}
-		bm.measure("main", false);
+		bm.end();
 	}
 }
 
@@ -503,20 +503,26 @@ class BenchMark {
 
 	private boolean on;
 	private long timeStamp;
-	private String padding = "";
+	private long start;
+	private long end;
+
+	private LinkedHashMap<String, BMEntry> measurement = new LinkedHashMap<>();
 
 	public BenchMark(boolean b) {
 		on = b;
-		if (on) {
-			System.out.println(padding + "=========");
-			timeStamp = System.nanoTime();
-		}
 	}
 
 	public void measure(String msg, boolean reset) {
 		if (on) {
 			long ts = System.nanoTime();
-			System.out.println(padding + (ts - timeStamp) + "\t\t: " + msg);
+			if (measurement.containsKey(msg) == false) {
+				measurement.put(msg, new BMEntry());
+			}
+			long elaps = ts - timeStamp;
+
+			measurement.get(msg).totalTime += elaps;
+			measurement.get(msg).count++;
+
 			if (reset) {
 				timeStamp = System.nanoTime();
 			}
@@ -529,10 +535,33 @@ class BenchMark {
 		}
 	}
 
-	public void message(String message) {
+	public void start() {
 		if (on) {
-			System.out.println(padding + "===" + message);
+			start = System.nanoTime();
 		}
+	}
+
+	public void end() {
+		if (on) {
+			end = System.nanoTime();
+			message();
+		}
+	}
+
+	private void message() {
+		if (on) {
+			for (Entry<String, BMEntry> entry : measurement.entrySet()) {
+				System.err.println(String.format("%s:\ttotal=%d\t avg=%df",
+						entry.getKey(), entry.getValue().totalTime,
+						(entry.getValue().totalTime / entry.getValue().count)));
+			}
+			System.err.println("total_time=" + (end - start));
+		}
+	}
+
+	private static class BMEntry {
+		long totalTime;
+		long count;
 	}
 
 }
